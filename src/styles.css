@@ -14,7 +14,7 @@
 .dash-top{border:0;padding:0;flex:0 0 auto}
 .dash-top .wordmark{font-size:1.35rem;font-weight:500;letter-spacing:-.035em;display:flex;align-items:center;gap:0;color:#e9e7df}
 .dash-top .wordmark .brand-name{color:#e9e7df}
-.dash-top .wordmark .brand-period{color:var(--amber)}
+.dash-top .wordmark .brand-period{display:inline-block;width:.42em;height:.42em;flex:0 0 .42em;border-radius:50%;background:var(--amber);color:transparent;font-size:1em;line-height:1;transform:translateY(.28em)}
 .settings-button{border:0;padding:4px;color:#8d9087;display:flex;align-items:center;gap:8px}
 .settings-button:hover{color:#d7d2c2;border:0}
 .settings-icon{width:22px;height:22px;fill:none;stroke:var(--amber);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin:0}
@@ -31,8 +31,13 @@
 .menu-caption{display:block;padding:7px 10px 3px;color:#8b8a80;font:9px var(--sans);letter-spacing:.12em}
 .settings-menu button.current-profile{color:var(--gold-light)}
 .minimal-dashboard{width:min(100%,1200px);margin:clamp(82px,15vh,150px) auto 0;text-align:center;animation:rise .7s both cubic-bezier(.2,.75,.25,1)}
+.countdown-reading{display:flex;flex-direction:column;align-items:center}
+.countdown-reading.rotation-reading,.family-card.rotation-card{opacity:1;transform:none}
+.countdown-reading.rotation-reading.rotation-out,.family-card.rotation-card.rotation-out{opacity:0;transition:opacity .45s ease}
+.countdown-reading.rotation-reading.rotation-in,.family-card.rotation-card.rotation-in{animation:rotationFadeIn .85s ease both}
+@keyframes rotationFadeIn{from{opacity:0}to{opacity:1}}
 .minimal-label{display:block;color:#a2a49b;font-size:clamp(13px,1.7vw,23px);font-weight:400;letter-spacing:.01em}
-.minimal-time{display:flex;justify-content:center;align-items:baseline;gap:.35em;color:#efede5;font-size:clamp(2.7rem,5.15vw,4.8rem);font-weight:400;letter-spacing:-.045em;line-height:1.2;margin-top:17px;font-variant-numeric:tabular-nums}
+.minimal-time{display:flex;justify-content:center;align-items:baseline;gap:.35em;color:#efede5;font-size:clamp(2.7rem,5.15vw,4.8rem);font-weight:400;letter-spacing:-.045em;line-height:1.2;margin-top:17px;font-variant-numeric:tabular-nums;text-wrap:pretty}
 .sunsets{font-size:clamp(15px,1.75vw,24px);color:#a2a49b;margin:15px 0 0}
 .minimal-progress{position:relative;width:100%;height:14px;margin-top:clamp(44px,8.5vh,70px);background:#3a3d39;border-radius:20px;overflow:hidden}
 .minimal-progress span{display:block;height:100%;border-radius:20px;transition:width 1.25s cubic-bezier(.2,.75,.25,1)}

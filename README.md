@@ -1,20 +1,25 @@
 # someday.
 
-A local-first React + Vite prototype for a Chrome new-tab countdown dashboard. The app stores your settings in this browser only; there is no account or backend.
+### Don’t wait for someday.
 
-## Run it
+Someday is a quiet new-tab countdown that helps make time feel a little more tangible. It turns a broad sense of “there’s time later” into a gentle reminder to pay attention to the time you have today.
 
-1. Install Node.js 20 or newer.
-2. In this folder, run `npm install`.
-3. Run `npm run dev` and open the local URL Vite prints (usually `http://localhost:5173`).
-4. For a production build, run `npm run build`; `npm run preview` serves that build locally.
+## A little perspective, for today
 
-## About the numbers
+See an estimate of time remaining, time lived, or both in a rotating view. Add a secondary counter for things you want to keep in mind, such as sunsets or prayers. Adjust how the numbers are displayed, add family profiles, and choose a simple dashboard or a family grid.
 
-Country and sex categories are rounded, offline reference values for life expectancy at birth, aligned to the UN World Population Prospects 2024 (2023 estimate) country tables. The app lets you edit the baseline. The dashboard subtracts age in whole years from that baseline as a simple countdown convention; it is **not** a conditional life-table estimate for a person who has already reached their current age, nor a personal prediction. The interface explains this distinction. The table covers a selection of countries and uses a sex category only to select a population statistic. The app does not infer gender identity.
+Someday is meant to encourage reflection, not urgency. Use the estimate as a prompt to spend your time with intention.
 
-Source: [UN World Population Prospects 2024](https://population.un.org/wpp/). Country figures are rounded for the prototype; use the source data and review exact values before shipping a public extension.
+## Your information stays on your device
 
-## Chrome new-tab starting point
+Your profile, family details, and preferences are saved locally in your browser. Someday has no account or backend.
 
-The Vite production output is a static site and can be hosted or adapted into an extension. To make an installable extension, add a Manifest V3 `manifest.json` with `chrome_url_overrides.newtab` pointing at the built entry page, then package the build output. This prototype does not request Chrome permissions.
+## About the estimate
+
+The country and sex-category estimates are rounded reference values based on the UN’s [World Population Prospects 2024](https://population.un.org/wpp/) (2023 estimates). You can edit the estimate or skip the demographic estimate.
+
+Life expectancy at birth describes a population. It is not a personal prediction or a conditional estimate based on someone’s current age. Someday uses it as a simple planning baseline and explains that distinction in the app.
+
+## Try it
+
+To run Someday locally, install Node.js, then run `npm install` and `npm run dev` in this folder. Vite will print a local address to open in your browser.

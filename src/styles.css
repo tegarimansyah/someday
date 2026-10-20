@@ -187,3 +187,5 @@ select,input{font-size:16px}
 .number-note summary{font-size:14px}
 @media(max-height:700px){.minimal-label{font-size:15px}.minimal-time{font-size:clamp(2.8rem,5vw,4.5rem)}.sunsets{font-size:16px}.minimal-progress-labels{font-size:15px}.minimal-dashboard blockquote{font-size:1.45rem}.number-note{font-size:12px}.onboarding h1{font-size:clamp(2.6rem,7.5vh,3.5rem)}.intro{font-size:13px}.micro,.source-note{font-size:12px}.privacy,.privacy button{font-size:12px}}
 @media(max-width:700px){.onboarding h1{font-size:clamp(3rem,9.5vw,3.5rem)}.minimal-time{font-size:clamp(3.4rem,14vw,5rem)}.family-card strong{font-size:1.7rem}}
+.calculation-error{font-size:13px;line-height:1.5;color:#f0a18e;margin:8px 0 0}
+.modal-fields input[aria-invalid="true"]{border-color:#c97968;box-shadow:0 0 0 1px #c9796840}

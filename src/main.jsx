@@ -602,10 +602,10 @@ function App() {
       <div className={`countdown-reading ${rotating?`rotation-reading rotation-${rotationPhase}`:''} ${countUp?'mode-lived':'mode-remaining'}`}>
         <span className="minimal-label">{countUp ? (profile.name ? `Hi ${profile.name}, time lived so far` : 'Time lived so far') : (profile.name ? `Hi ${profile.name}, your estimated time remaining` : 'Your estimated time remaining')}</span>
         <div className="minimal-time">{formatCountdown(layout.mainFormat,mainYears,mainDays)}</div>
-        {layout.secondaryEnabled && <p className="sunsets">{secondaryCount.toLocaleString('en-US')} {layout.secondaryLabel}.</p>}
       </div>
       <div className="minimal-progress" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin="0" aria-valuemax="100" aria-label="Estimated time lived and remaining"><span className="lived-bar" style={{width:`${pct}%`}}/></div>
       <div className="minimal-progress-labels"><span>{pct.toFixed(0)}% lived</span><span>{remainPct.toFixed(0)}% remaining</span></div>
+      {layout.secondaryEnabled && <p className="sunsets">{secondaryCount.toLocaleString('en-US')} {layout.secondaryLabel}.</p>}
       {quote && <blockquote>“{quote}”</blockquote>}
       <details className="number-note"><summary>About this estimate</summary><p>Based on life expectancy at birth for {countryName} ({dataValue} years, UN World Population Prospects 2024{profile.manual?' · edited by you':''}). This is a population statistic, not a personal prediction. It is not a conditional life-table estimate for someone who has already reached your current age.</p><p>You can change this estimate anytime by clicking <b>Settings</b>.</p></details>
     </section>}

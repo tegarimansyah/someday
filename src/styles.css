@@ -112,6 +112,17 @@
 .family-edit-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .family-edit-fields label{margin:0;color:#c9c6bb;font-size:13px}
 .family-edit-fields input,.family-edit-fields select{min-height:40px;margin-top:6px;font-size:14px}
+.family-edit-fields .family-grid-toggle{grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:2px 0 0;color:#aaa99f;cursor:pointer}
+.family-grid-toggle input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:0 0 auto;padding:0;margin:0;accent-color:var(--amber)}
+.family-grid-empty{grid-column:1/-1;margin:0;padding:25px 18px;border:1px dashed #414238;color:#a2a49b;text-align:center;font-size:14px}
+.family-profile-options{display:flex;align-items:center;flex-wrap:wrap;gap:20px;margin-top:14px}
+.family-profile-options label{display:flex;align-items:center;gap:9px;margin:0;color:#c9c6bb;font-size:13px;cursor:pointer}
+.family-profile-options input[type=checkbox]{width:18px;height:18px;min-height:18px;padding:0;margin:0;accent-color:var(--amber)}
+.family-death-date{display:block;margin-top:14px;color:#c9c6bb;font-size:13px}
+.family-death-date input{display:block;width:100%;min-height:42px;margin-top:6px;font-size:14px}
+.family-validation-note{margin:8px 0 0;color:#e5b18a;font-size:12px;line-height:1.5}
+.since-note{margin:8px auto 0;color:#aaa99f;font-size:14px}
+.family-card small+small{margin-top:-3px;color:#9b9b90}
 .add-family-profile{align-self:flex-start;padding:10px 13px;border:1px dashed #5b513f;border-radius:3px;background:transparent;color:var(--gold-light);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
 .add-family-profile:hover{border-color:var(--amber);background:#d99a5810}
 .confirm-modal{width:min(100%,520px);padding:28px;background:#20211d;border:1px solid #514735;border-radius:6px;box-shadow:0 25px 90px #0009;font-family:'DM Sans',sans-serif}

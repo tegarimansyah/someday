@@ -4,6 +4,8 @@ if (import.meta.env.DEV) {
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import QRCode from 'qrcode';
+import jsQR from 'jsqr';
 import './styles.css';
 
 // Rounded 2023 estimates, based on UN World Population Prospects 2024 country tables.
@@ -147,6 +149,23 @@ const dailyQuoteFor = (person, muslim, quoteItems) => {
   const hash = Array.from(seed).reduce((value,char)=>(value * 31 + char.charCodeAt(0)) >>> 0, 7);
   return pool[(hash + Math.floor(Date.now() / 86400000)) % pool.length].text;
 };
+const QR_PART_SIZE = 620;
+const encodeBase64 = value => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (let start=0; start<bytes.length; start+=0x8000) binary += String.fromCharCode(...bytes.subarray(start,start+0x8000));
+  return btoa(binary);
+};
+const decodeBase64 = value => {
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, character=>character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+const checksum = value => {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(value)) { hash ^= byte; hash = Math.imul(hash,0x01000193) >>> 0; }
+  return hash.toString(16).padStart(8,'0');
+};
 function App() {
   const [profile, setProfile] = useState(() => { const p=readProfile(); return p ? {...p,id:p.id || 'primary'} : null; });
   const [profiles, setProfiles] = useState(readProfiles);
@@ -155,6 +174,20 @@ function App() {
   const [syncModal, setSyncModal] = useState(null);
   const [syncImport, setSyncImport] = useState(null);
   const [syncError, setSyncError] = useState('');
+  const [syncTab, setSyncTab] = useState('file');
+  const [qrMode, setQrMode] = useState('send');
+  const [qrTransfer, setQrTransfer] = useState(null);
+  const [qrIndex, setQrIndex] = useState(0);
+  const [qrImage, setQrImage] = useState('');
+  const [qrParts, setQrParts] = useState({});
+  const [qrStatus, setQrStatus] = useState('');
+  const [qrScanActive, setQrScanActive] = useState(false);
+  const [qrScanError, setQrScanError] = useState('');
+  const videoRef = React.useRef(null);
+  const scanCanvasRef = React.useRef(null);
+  const scanFrameRef = React.useRef(0);
+  const qrPartsRef = React.useRef({});
+  const completedQrRef = React.useRef(new Set());
   const [manageFamilyOpen, setManageFamilyOpen] = useState(false);
   const [deleteFamilyTarget, setDeleteFamilyTarget] = useState(null);
   const [familyDrafts, setFamilyDrafts] = useState(() => readProfiles());
@@ -231,7 +264,7 @@ function App() {
     saveProfiles(nextProfiles); setProfiles(nextProfiles); saveProfile(p); setProfile(p); setSettings(false); setIntroTransition(true);
   };
   const selectProfile = (p) => { setProfile(p); saveProfile(p); setMenuOpen(false); };
-  const openSyncModal = mode => { setMenuOpen(false); setSyncError(''); setSyncImport(null); setSyncModal(mode); };
+  const openSyncModal = mode => { setMenuOpen(false); setSyncError(''); setSyncImport(null); setSyncTab('file'); setQrMode('send'); setQrTransfer(null); setQrImage(''); setQrStatus(''); setQrScanActive(false); qrPartsRef.current={}; completedQrRef.current.clear(); setQrParts({}); setSyncModal(mode); };
   const downloadCurrentData = () => {
     const blob = new Blob([JSON.stringify(syncData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -241,12 +274,9 @@ function App() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  const readSyncFile = async file => {
+  const acceptSyncPayload = data => {
     setSyncError(''); setSyncImport(null);
-    if (!file) return;
-    if (file.size > 2_000_000) { setSyncError('Choose a JSON file smaller than 2 MB.'); return; }
     try {
-      const data = JSON.parse(await file.text());
       if (data?.app !== 'Someday' || data?.formatVersion !== 1) throw new Error('This file is not a supported Someday backup.');
       const sourceProfiles = Array.isArray(data.profiles) ? data.profiles : data.profile ? [data.profile] : [];
       if (!sourceProfiles.length) throw new Error('This backup does not contain any profiles.');
@@ -269,8 +299,41 @@ function App() {
       };
       const activeProfileId = importedProfiles.some(person => person.id === data.activeProfileId) ? data.activeProfileId : importedProfiles[0].id;
       setSyncImport({ profiles: importedProfiles, activeProfileId, layout: importedLayout });
-    } catch (error) { setSyncError(error.message || 'Could not read this JSON backup.'); }
+      return true;
+    } catch (error) { setSyncError(error.message || 'Could not read this JSON backup.'); return false; }
   };
+  const readSyncFile = async file => {
+    setSyncError(''); setSyncImport(null);
+    if (!file) return;
+    if (file.size > 2_000_000) { setSyncError('Choose a JSON file smaller than 2 MB.'); return; }
+    try { acceptSyncPayload(JSON.parse(await file.text())); }
+    catch (error) { setSyncError(error.message || 'Could not read this JSON backup.'); }
+  };
+  const handleQrChunk = async raw => {
+    const match = /^SMD1\|([a-f0-9]{8})\|(\d+)\|(\d+)\|([a-f0-9]{8})\|([A-Za-z0-9+/=]+)$/.exec(raw);
+    if (!match) return;
+    const [, transferId, partText, totalText, digest, chunk] = match;
+    const part=Number(partText), total=Number(totalText);
+    if (!Number.isInteger(part)||!Number.isInteger(total)||total<1||total>5000||part<1||part>total) return;
+    if (completedQrRef.current.has(transferId)) return;
+    let transfer=qrPartsRef.current[transferId];
+    if (!transfer || transfer.total!==total || transfer.digest!==digest) transfer={total,digest,parts:{}};
+    if (!transfer.parts[part]) transfer.parts[part]=chunk;
+    qrPartsRef.current={...qrPartsRef.current,[transferId]:transfer};
+    const count=Object.keys(transfer.parts).length;
+    setQrParts({...transfer.parts}); setQrStatus(`Received ${count} of ${total} QR parts.`);
+    if (count!==total) return;
+    completedQrRef.current.add(transferId);
+    try {
+      const base64=Array.from({length:total},(_,i)=>transfer.parts[i+1]).join('');
+      const json=decodeBase64(base64);
+      if (checksum(json)!==digest) throw new Error('The completed QR backup failed its checksum. Scan the rotating codes again.');
+      if(!acceptSyncPayload(JSON.parse(json))){delete qrPartsRef.current[transferId];setQrParts({});setQrScanActive(false);return;}
+      setQrStatus('All parts received and verified. Review the restore confirmation below.');
+      setQrScanActive(false);
+    } catch (error) { completedQrRef.current.delete(transferId);delete qrPartsRef.current[transferId];setQrParts({});setQrErrorMessage(error.message || 'Could not assemble this QR backup.'); }
+  };
+  const setQrErrorMessage = message => { setSyncError(message); setQrScanActive(false); };
   const applySyncImport = () => {
     if (!syncImport) return;
     const active = syncImport.profiles.find(person => person.id === syncImport.activeProfileId) || syncImport.profiles[0];
@@ -393,6 +456,64 @@ function App() {
     }, 450);
     return () => { window.clearTimeout(swapTimer); window.clearTimeout(finishTimer); };
   }, [rotating, desiredRotationCountUp]);
+  useEffect(() => {
+    if (syncModal!=='offline'||syncTab!=='qr'||qrMode!=='send') return;
+    let cancelled=false;
+    const json=JSON.stringify(syncData);
+    const bytes=new Uint8Array(4); crypto.getRandomValues(bytes);
+    const id=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+    const base64=encodeBase64(json);
+    const chunks=base64.match(new RegExp(`.{1,${QR_PART_SIZE}}`,'g'))||[''];
+    if(chunks.length>5000){setSyncError('This backup is too large to transfer by QR code. Use the backup file tab instead.');return;}
+    setQrTransfer(null); setQrImage(''); setQrIndex(0); setSyncError('');
+    const transfer={id,digest:checksum(json),chunks};
+    if(!cancelled)setQrTransfer(transfer);
+    return ()=>{cancelled=true;};
+  },[syncModal,syncTab,qrMode,syncData]);
+  useEffect(() => {
+    if(syncModal!=='offline'||syncTab!=='qr'||qrMode!=='send'||!qrTransfer?.chunks.length)return;
+    const timer=window.setInterval(()=>setQrIndex(index=>(index+1)%qrTransfer.chunks.length),300);
+    return ()=>window.clearInterval(timer);
+  },[syncModal,syncTab,qrMode,qrTransfer]);
+  useEffect(() => {
+    if(syncModal!=='offline'||syncTab!=='qr'||qrMode!=='send'||!qrTransfer)return;
+    const payload=`SMD1|${qrTransfer.id}|${qrIndex+1}|${qrTransfer.chunks.length}|${qrTransfer.digest}|${qrTransfer.chunks[qrIndex]}`;
+    let active=true;
+    QRCode.toDataURL(payload,{errorCorrectionLevel:'M',margin:2,width:340,color:{dark:'#181915',light:'#ffffff'}})
+      .then(url=>{if(active)setQrImage(url);})
+      .catch(()=>{if(active)setSyncError('Could not create this QR code. Try the backup file tab.');});
+    return ()=>{active=false;};
+  },[syncModal,syncTab,qrMode,qrTransfer,qrIndex]);
+  useEffect(() => {
+    if(syncModal!=='offline'||syncTab!=='qr'||qrMode!=='scan'||!qrScanActive)return;
+    let stream;
+    let disposed=false;
+    const startCamera=async()=>{
+      try {
+        if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera scanning needs a secure browser context (HTTPS or localhost).');
+        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+        if(disposed){stream.getTracks().forEach(track=>track.stop());return;}
+        const video=videoRef.current;
+        if(!video)return;
+        video.srcObject=stream;
+        await video.play();
+        const canvas=scanCanvasRef.current;
+        const context=canvas?.getContext('2d',{willReadFrequently:true});
+        const scan=()=>{
+          if(disposed||!context||!video.videoWidth){scanFrameRef.current=requestAnimationFrame(scan);return;}
+          const width=640, height=Math.round(width*video.videoHeight/video.videoWidth);
+          canvas.width=width;canvas.height=height;context.drawImage(video,0,0,width,height);
+          const image=context.getImageData(0,0,width,height);
+          const decoded=jsQR(image.data,width,height,{inversionAttempts:'dontInvert'});
+          if(decoded?.data)handleQrChunk(decoded.data);
+          scanFrameRef.current=requestAnimationFrame(scan);
+        };
+        scanFrameRef.current=requestAnimationFrame(scan);
+      } catch(error) { if(!disposed)setQrScanError(error.message||'Camera access was unavailable.'); }
+    };
+    startCamera();
+    return ()=>{disposed=true;cancelAnimationFrame(scanFrameRef.current);if(stream)stream.getTracks().forEach(track=>track.stop());if(videoRef.current)videoRef.current.srcObject=null;};
+  },[syncModal,syncTab,qrMode,qrScanActive]);
   const getPersonStats = (person) => {
     const [birthMonth, birthDay] = person.birthDate ? person.birthDate.slice(5).split('-').map(Number) : [1, 1];
     const birthYear = Number(person.birthYear) || currentYear;
@@ -428,7 +549,7 @@ function App() {
   const countryName = LIFE[profile?.country]?.[0] || 'your selected country';
   const dataValue = profile ? (profile.gender === 'female' ? LIFE[profile.country]?.[2] : profile.gender === 'male' ? LIFE[profile.country]?.[1] : Math.round((LIFE[profile.country]?.[1] + LIFE[profile.country]?.[2]) / 2)) : 0;
 
-  const syncModalMarkup = syncModal && <div className="modal-backdrop sync-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSyncModal(null);}}><section className="confirm-modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title"><header className="sync-modal-header"><div><span className="label-muted">SYNC</span><h2 id="sync-title">{syncModal==='offline'?'Offline Sync':'EthiqsHub Connect'}</h2></div><button type="button" className="modal-close sync-modal-close" onClick={()=>setSyncModal(null)} aria-label="Close sync">×</button></header>{syncModal==='offline' ? <div className="sync-content"><p>Save a backup of your Someday profiles and layout, or restore them from a JSON file.</p><button type="button" className="primary sync-download" onClick={downloadCurrentData}>Download Current Data <span>↓</span></button><details className="sync-json"><summary>View JSON data</summary><pre>{JSON.stringify(syncData,null,2)}</pre></details><hr/><label className="sync-dropzone" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();readSyncFile(event.dataTransfer.files?.[0]);}}><input type="file" accept=".json,application/json" onChange={event=>readSyncFile(event.target.files?.[0])}/><strong>Drop a backup JSON here</strong><span>or click to choose a file</span></label>{syncError && <p className="sync-error" role="alert">{syncError}</p>}{syncImport && <div className="sync-import-confirm"><p>Ready to restore <b>{syncImport.profiles.length}</b> {syncImport.profiles.length===1?'profile':'profiles'}. This replaces the Someday data currently saved on this device.</p><div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={()=>setSyncImport(null)}>Cancel</button><button type="button" className="primary danger-action" onClick={applySyncImport}>Replace local data</button></div></div>}</div> : <div className="sync-content"><p>EthiqsHub Connect is coming soon.</p></div>}</section></div>;
+  const syncModalMarkup = syncModal && <div className="modal-backdrop sync-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSyncModal(null);}}><section className="confirm-modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title"><header className="sync-modal-header"><div><span className="label-muted">SYNC</span><h2 id="sync-title">{syncModal==='offline'?'Offline Sync':'EthiqsHub Connect'}</h2></div><button type="button" className="modal-close sync-modal-close" onClick={()=>setSyncModal(null)} aria-label="Close sync">×</button></header>{syncModal==='offline' ? <div className="sync-content"><div className="sync-tabs" role="tablist" aria-label="Offline sync methods"><button type="button" role="tab" aria-selected={syncTab==='file'} className={syncTab==='file'?'active':''} onClick={()=>{setSyncTab('file');setQrScanActive(false);}}>Backup file</button><button type="button" role="tab" aria-selected={syncTab==='qr'} className={syncTab==='qr'?'active':''} onClick={()=>{setSyncTab('qr');setQrMode('send');setQrStatus('');setQrScanError('');setSyncError('');qrPartsRef.current={};completedQrRef.current.clear();setQrParts({});}}>QR Code</button></div>{syncTab==='file' ? <><p>Save a backup of your Someday profiles and layout, or restore them from a JSON file.</p><button type="button" className="primary sync-download" onClick={downloadCurrentData}>Download Current Data <span>↓</span></button><details className="sync-json"><summary>View JSON data</summary><pre>{JSON.stringify(syncData,null,2)}</pre></details><hr/><label className="sync-dropzone" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();readSyncFile(event.dataTransfer.files?.[0]);}}><input type="file" accept=".json,application/json" onChange={event=>readSyncFile(event.target.files?.[0])}/><strong>Drop a backup JSON here</strong><span>or click to choose a file</span></label></> : <><div className="qr-mode-tabs" role="tablist" aria-label="QR transfer mode"><button type="button" role="tab" aria-selected={qrMode==='send'} className={qrMode==='send'?'active':''} onClick={()=>{setQrMode('send');setQrScanActive(false);setQrScanError('');setQrStatus('');setSyncError('');}}>Show QR</button><button type="button" role="tab" aria-selected={qrMode==='scan'} className={qrMode==='scan'?'active':''} onClick={()=>{setQrMode('scan');setQrScanActive(false);setQrScanError('');setQrStatus('');setSyncError('');qrPartsRef.current={};completedQrRef.current.clear();setQrParts({});setSyncImport(null);}}>Scan QR</button></div>{qrMode==='send' ? <div className="qr-sender"><p>Open Someday on the receiving device, choose <b>Scan QR</b>, and scan this screen. Keep the QR visible until all parts are collected.</p><div className="qr-stage">{qrImage ? <img src={qrImage} alt="Someday backup QR code"/> : <div className="qr-placeholder" aria-live="polite">Preparing backup…</div>}</div></div> : <div className="qr-scanner"><p>Allow camera access, then point this device at the rotating QR codes on the sending screen. The parts collect automatically.</p><video ref={videoRef} className={qrScanActive?'scanner-video active':'scanner-video'} muted playsInline/><canvas ref={scanCanvasRef} className="scanner-canvas"/><div className="scanner-actions">{!qrScanActive && !syncImport && <button type="button" className="primary" onClick={()=>{setQrScanError('');setQrScanActive(true);}}>Start camera scanner</button>}{qrScanActive && <button type="button" className="confirm-cancel" onClick={()=>setQrScanActive(false)}>Stop scanning</button>}</div><p className="qr-progress-label" aria-live="polite">{qrStatus||'No QR parts received yet.'}</p>{qrScanError && <p className="sync-error" role="alert">{qrScanError}</p>}<p className="qr-part-count">Parts collected: {Object.keys(qrParts).length}</p></div>}</>}{syncError && <p className="sync-error" role="alert">{syncError}</p>}{syncImport && <div className="sync-import-confirm"><p>Ready to restore <b>{syncImport.profiles.length}</b> {syncImport.profiles.length===1?'profile':'profiles'}. This replaces the Someday data currently saved on this device.</p><div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={()=>setSyncImport(null)}>Cancel</button><button type="button" className="primary danger-action" onClick={applySyncImport}>Replace local data</button></div></div>}</div> : <div className="sync-content"><p>EthiqsHub Connect is coming soon.</p></div>}</section></div>;
 
   if (!profile || settings) return <><main className="onboard-shell">
     <header className="brand-row"><a className="wordmark" href="#" onClick={e => {e.preventDefault(); if(profile) setSettings(false);}} aria-label="Someday home">someday<span>.</span></a><div className="settings-wrap"><button className="settings-button sync-trigger" onClick={()=>setMenuOpen(open=>!open)} aria-expanded={menuOpen} aria-haspopup="menu" aria-label="Sync menu"><svg className="settings-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9A7 7 0 0 1 18 6.5L20 12M4 12l2 5.5A7 7 0 0 0 18.3 15"/></svg><span className="settings-label">Sync</span></button>{menuOpen && <div className="settings-menu" role="menu" aria-label="Sync">{syncMenuActions}</div>}</div></header>
